@@ -372,6 +372,8 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
         MediaType.APPLICATION_JSON_TYPE
       ));
 
+      LOG.info("Header " + authHeader.getKey() + " = " + authHeader.getValue());
+
       var res = client.target(jobsEndpointUrl)
         .request()
         .header(authHeader.getKey(), authHeader.getValue())
