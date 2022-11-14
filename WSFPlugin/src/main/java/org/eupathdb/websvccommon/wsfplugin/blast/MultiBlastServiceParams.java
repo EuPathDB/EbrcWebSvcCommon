@@ -4,8 +4,6 @@ import java.util.Arrays;
 import java.util.Map;
 
 import org.apache.log4j.Logger;
-import org.gusdb.fgputil.FormatUtil;
-import org.gusdb.fgputil.FormatUtil.Style;
 import org.gusdb.fgputil.Tuples.TwoTuple;
 import org.gusdb.wsf.plugin.PluginUserException;
 import org.json.JSONArray;
@@ -15,15 +13,16 @@ import org.json.JSONObject;
  * Encapsulates the processing and conversion of multi-blast service params from
  * their WDK question form representation into the JSON accepted by the
  * multi-blast service.
- *
+ * <p>
  * NOTE: This is a transcription of the logic contained in:
- * 
- *     web-multi-blast/blob/main/src/lib/utils/params.ts
- * 
+ * <p>
+ *     web-multi-blast/blob/main/src/lib/utils/params-query.ts
+ * <p>
  * The two must be kept in sync so unexpected results are not shown in the
  * multi-blast UI and so users get the same result when they export to WDK.
  *
  * @author rdoherty
+ * @author eharper
  */
 public class MultiBlastServiceParams {
 
@@ -73,82 +72,185 @@ public class MultiBlastServiceParams {
     };
   }
 
-  /**
-   * Converts the internal values of the WDK multiblast query params into
-   * a JSON object passed to the multi-blast service to configure a new job for
-   * a single input sequence.
-   *
-   * @param params internal values of params
-   * @return json object to be passed as "config" to multi-blast service
-   */
-  public static JSONObject buildNewJobRequestConfigJson(Map<String, String> params) throws PluginUserException {
-
-    LOG.info("Converting the following param values to JSON: " + FormatUtil.prettyPrint(params, Style.MULTI_LINE));
-
-    var requestConfig = buildBaseRequestConfig(params);
-
-    var selectedTool = getNormalizedParamValue(params, BLAST_ALGORITHM_PARAM_NAME);
-
-    var filterLowComplexityRegionsStr = getNormalizedParamValue(params, FILTER_LOW_COMPLEX_PARAM_NAME);
-    //LOG.debug("\n****filterLowComplexityRegionsStr: ---" + filterLowComplexityRegionsStr + "---");
-    var filterLowComplexityRegions = !filterLowComplexityRegionsStr.startsWith("no");
-    //LOG.debug("\n****filterLowComplexityRegions: ---" + filterLowComplexityRegions + "---");
-
-    if (!selectedTool.equals("tblastx")) {
-      var gapCostsStr = getNormalizedParamValue(params, GAP_COSTS_PARAM_NAME);
-
-      var gapCostsPair = paramValueToIntPair(gapCostsStr);
-      var gapOpen = gapCostsPair.getFirst();
-      var gapExtend = gapCostsPair.getSecond();
-
-      requestConfig
-        .put("gapOpen", gapOpen)
-        .put("gapExtend", gapExtend);
-    }
-
-    if (selectedTool.equals("blastn")) {
-      var matchMismatchStr = getNormalizedParamValue(params, MATCH_MISMATCH_SCORE);
-      var rewardPenaltyPair = paramValueToIntPair(matchMismatchStr);
-      var reward = rewardPenaltyPair.getFirst();
-      var penalty = rewardPenaltyPair.getSecond();
-
-      return requestConfig
-        .put("tool", selectedTool)
-        .put("task", selectedTool)
-        .put("dust", filterLowComplexityRegions ? "yes" : "no")
-        .put("reward", reward)
-        .put("penalty", penalty);
-    }
-
-    var scoringMatrix = getNormalizedParamValue(params, SCORING_MATRIX_PARAM_NAME);
-    requestConfig.put("matrix", scoringMatrix);
-
-    requestConfig.put("seg", filterLowComplexityRegions ? "yes" : "no");
-    //LOG.debug("\n****seg: ---" + (filterLowComplexityRegions ? "yes" : "no") + "---");
-
-    if (selectedTool.equals("tblastx")) {
-      return requestConfig
-        .put("tool", selectedTool)
-        .put("queryGeneticCode", 1);
-    }
-
-    var compBasedStats = getNormalizedParamValue(params, COMP_ADJUST_PARAM_NAME);
-    requestConfig.put("compBasedStats", compBasedStats);
-
-    if (selectedTool.equals("blastp") || selectedTool.equals("tblastn")) {
-      return requestConfig
-        .put("tool", selectedTool)
-        .put("task", selectedTool);
-    }
-
-    if (selectedTool.equals("blastx")) {
-      return requestConfig
-        .put("tool", selectedTool)
-        .put("queryGeneticCode", 1);
-    }
-
-    throw new PluginUserException("The tool type '" + selectedTool + "' is unsupported");
+  public static JSONObject buildBlastCreateJobBody(String projectID, Map<String, String> params)
+  throws PluginUserException {
+    return new JSONObject()
+      .put("jobConfig", paramValuesToBlastJobConfig(projectID, params))
+      .put("blastConfig", paramValuesToBlastQueryConfig(params));
   }
+
+  private static JSONObject paramValuesToBlastJobConfig(String projectID, Map<String, String> params) {
+    return new JSONObject()
+      .put("site", projectID)
+      .put("targets", buildNewJobRequestTargetJson(params))
+      .put("query", getNormalizedParamValue(params, BLAST_QUERY_SEQUENCE_PARAM_NAME))
+      .put("addToUserCollection", false);
+  }
+
+  private static JSONObject paramValuesToBlastQueryConfig(Map<String, String> params)  throws PluginUserException {
+    final var tool = getNormalizedParamValue(params, BLAST_ALGORITHM_PARAM_NAME);
+
+    final var config = new JSONObject()
+      .put("eValue", getNormalizedParamValue(params, EXPECTATION_VALUE_PARAM_NAME))
+      .put("softMasking", getBooleanParamValue(params, SOFT_MASK_PARAM_NAME))
+      .put("lowercaseMasking", getBooleanParamValue(params, LOWER_CASE_MASK_PARAM_NAME))
+      .put("maxTargetSequences", getIntParamValue(params, NUM_QUERY_RESULTS_PARAM_NAME))
+      .put("maxHSPs", getIntParamValue(params, MAX_MATCHES_QUERY_RANGE_PARAM_NAME));
+
+    switch (tool) {
+      case "blastn":
+        return paramsToBlastNConfig(config, params);
+      case "blastp":
+        return paramsToBlastPConfig(config, params);
+      case "blastx":
+        return paramsToBlastXConfig(config, params);
+      case "tblastn":
+        return paramsToTBlastNConfig(config, params);
+      case "tblastx":
+        return paramsToTBlastXConfig(config, params);
+      case "deltablast":
+        return paramsToDeltaBlastConfig(config, params);
+      case "psiblast":
+        return paramsToPSIBlastConfig(config, params);
+      case "rpsblast":
+        return paramsToRPSBlastConfig(config, params);
+      case "rpstblastn":
+        return paramsToRPSTBlastNConfig(config, params);
+      default:
+        throw new PluginUserException("Unknown blast tool: " + tool);
+    }
+  }
+
+  // // //
+  //
+  //   MultiBlast Tool-Specific Config Builders
+  //
+  // // //
+
+  private static JSONObject paramsToBlastNConfig(JSONObject config, Map<String, String> params) {
+    var gapCosts = paramValueToIntPair(getNormalizedParamValue(params, GAP_COSTS_PARAM_NAME));
+    var mismatch = paramValueToIntPair(getNormalizedParamValue(params, MATCH_MISMATCH_SCORE));
+
+    return config.put("tool", "blastn")
+      .put("task", "blastn")
+      .put("gapOpen", gapCosts.getFirst())
+      .put("gapExtend", gapCosts.getSecond())
+      .put("reward", mismatch.getFirst())
+      .put("penalty", mismatch.getSecond())
+      .put("wordSize", getIntParamValue(params, WORD_SIZE_PARAM_NAME))
+      .put("dust", parseDust(params));
+  }
+
+  private static JSONObject paramsToBlastPConfig(JSONObject config, Map<String, String> params) {
+    var gapCosts = paramValueToIntPair(getNormalizedParamValue(params, GAP_COSTS_PARAM_NAME));
+
+    return config.put("tool", "blastp")
+      .put("task", "blastp")
+      .put("gapOpen", gapCosts.getFirst())
+      .put("gapExtend", gapCosts.getSecond())
+      .put("wordSize", getIntParamValue(params, WORD_SIZE_PARAM_NAME))
+      .put("matrix", getNormalizedParamValue(params, SCORING_MATRIX_PARAM_NAME))
+      .put("compBasedStats", getNormalizedParamValue(params, COMP_ADJUST_PARAM_NAME))
+      .put("seg", parseSeg(params));
+  }
+
+  private static JSONObject paramsToBlastXConfig(JSONObject config, Map<String, String> params) {
+    var gapCosts = paramValueToIntPair(getNormalizedParamValue(params, GAP_COSTS_PARAM_NAME));
+
+    return config.put("tool", "blastx")
+      .put("task", "blastx")
+      .put("gapOpen", gapCosts.getFirst())
+      .put("gapExtend", gapCosts.getSecond())
+      .put("wordSize", getIntParamValue(params, WORD_SIZE_PARAM_NAME))
+      .put("matrix", getNormalizedParamValue(params, SCORING_MATRIX_PARAM_NAME))
+      .put("compBasedStats", getNormalizedParamValue(params, COMP_ADJUST_PARAM_NAME))
+      .put("seg", parseSeg(params));
+  }
+
+  private static JSONObject paramsToTBlastNConfig(JSONObject config, Map<String, String> params) {
+    var gapCosts = paramValueToIntPair(getNormalizedParamValue(params, GAP_COSTS_PARAM_NAME));
+
+    return config.put("tool", "tblastn")
+      .put("task", "tblastn")
+      .put("gapOpen", gapCosts.getFirst())
+      .put("gapExtend", gapCosts.getSecond())
+      .put("wordSize", getIntParamValue(params, WORD_SIZE_PARAM_NAME))
+      .put("matrix", getNormalizedParamValue(params, SCORING_MATRIX_PARAM_NAME))
+      .put("compBasedStats", getNormalizedParamValue(params, COMP_ADJUST_PARAM_NAME))
+      .put("seg", parseSeg(params));
+  }
+
+  private static JSONObject paramsToTBlastXConfig(JSONObject config, Map<String, String> params) {
+    return config.put("tool", "tblastx")
+      .put("wordSize", getIntParamValue(params, WORD_SIZE_PARAM_NAME))
+      .put("matrix", getNormalizedParamValue(params, SCORING_MATRIX_PARAM_NAME))
+      .put("seg", parseSeg(params));
+  }
+
+  private static JSONObject paramsToDeltaBlastConfig(JSONObject config, Map<String, String> params) {
+    var gapCosts = paramValueToIntPair(getNormalizedParamValue(params, GAP_COSTS_PARAM_NAME));
+
+    return config.put("tool", "deltablast")
+      .put("gapOpen", gapCosts.getFirst())
+      .put("gapExtend", gapCosts.getSecond())
+      .put("wordSize", getIntParamValue(params, WORD_SIZE_PARAM_NAME))
+      .put("matrix", getNormalizedParamValue(params, SCORING_MATRIX_PARAM_NAME))
+      .put("compBasedStats", getNormalizedParamValue(params, COMP_ADJUST_PARAM_NAME))
+      .put("seg", parseSeg(params));
+  }
+
+  private static JSONObject paramsToPSIBlastConfig(JSONObject config, Map<String, String> params) {
+    var gapCosts = paramValueToIntPair(getNormalizedParamValue(params, GAP_COSTS_PARAM_NAME));
+
+    return config.put("tool", "psiblast")
+      .put("gapOpen", gapCosts.getFirst())
+      .put("gapExtend", gapCosts.getSecond())
+      .put("wordSize", getIntParamValue(params, WORD_SIZE_PARAM_NAME))
+      .put("matrix", getNormalizedParamValue(params, SCORING_MATRIX_PARAM_NAME))
+      .put("compBasedStats", getNormalizedParamValue(params, COMP_ADJUST_PARAM_NAME))
+      .put("seg", parseSeg(params));
+  }
+
+  private static JSONObject paramsToRPSBlastConfig(JSONObject config, Map<String, String> params) {
+    return config.put("tool", "rpsblast")
+      .put("compBasedStats", getNormalizedParamValue(params, COMP_ADJUST_PARAM_NAME))
+      .put("seg", parseSeg(params));
+  }
+
+  private static JSONObject paramsToRPSTBlastNConfig(JSONObject config, Map<String, String> params) {
+    return config.put("tool", "rpstblastn")
+      .put("compBasedStats", getNormalizedParamValue(params, COMP_ADJUST_PARAM_NAME))
+      .put("seg", parseSeg(params));
+  }
+
+  // // //
+  //
+  //   Helper Methods
+  //
+  // // //
+
+  private static String getNormalizedParamValue(Map<String, String> params, String paramName) {
+    return params.get(paramName).replaceAll("^'|'$", "");
+  }
+
+  private static boolean getBooleanParamValue(Map<String, String> params, String paramName) {
+    return paramValueToBoolean(getNormalizedParamValue(params, paramName));
+  }
+
+  private static int getIntParamValue(Map<String, String> params, String paramName) {
+    return paramValueToInt(getNormalizedParamValue(params, paramName));
+  }
+
+  private static JSONObject parseDust(Map<String, String> params) {
+    return new JSONObject()
+      .put("enabled", !getNormalizedParamValue(params, FILTER_LOW_COMPLEX_PARAM_NAME).startsWith("no"));
+  }
+
+  private static JSONObject parseSeg(Map<String, String> params) {
+    return new JSONObject()
+      .put("enabled", !getNormalizedParamValue(params, FILTER_LOW_COMPLEX_PARAM_NAME).startsWith("no"));
+  }
+
 
   /**
    * Converts the internal values of the WDK multiblast query params into
@@ -158,7 +260,7 @@ public class MultiBlastServiceParams {
    * @param params internal values of params
    * @return json array to be passed as "targets" to multi-blast service
    */
-  public static JSONArray buildNewJobRequestTargetJson(Map<String, String> params) {
+  private static JSONArray buildNewJobRequestTargetJson(Map<String, String> params) {
     var organismsStr = params.get(BLAST_DATABASE_ORGANISM_PARAM_NAME);
     var wdkTargetType = params.get(BLAST_DATABASE_TYPE_PARAM_NAME);
 
@@ -172,54 +274,17 @@ public class MultiBlastServiceParams {
       : wdkTargetType;
 
     var targets = Arrays.stream(organisms)
-      .filter(organism -> !(organism.equals("-1") || organism.length() <= 3))
+      .filter(organism -> !(organism.length() <= 3))
       .map(leafOrganism ->
         new JSONObject()
-          .put("organism", leafOrganism)
-          .put("target", leafOrganism + blastTargetType)
+          .put("targetDisplayName", leafOrganism)
+          .put("targetFile", leafOrganism + blastTargetType)
       )
       .toArray();
 
     return new JSONArray(targets);
   }
 
-  private static JSONObject buildBaseRequestConfig(Map<String, String> params) {
-    var query = getNormalizedParamValue(params, BLAST_QUERY_SEQUENCE_PARAM_NAME);
-    var eValue = getNormalizedParamValue(params, EXPECTATION_VALUE_PARAM_NAME);
-    var numQueryResultsStr = getNormalizedParamValue(params, NUM_QUERY_RESULTS_PARAM_NAME);
-    var maxMatchesStr = getNormalizedParamValue(params, MAX_MATCHES_QUERY_RANGE_PARAM_NAME);
-    var wordSizeStr = getNormalizedParamValue(params, WORD_SIZE_PARAM_NAME);
-    var softMaskStr = getNormalizedParamValue(params, SOFT_MASK_PARAM_NAME);
-    var lowerCaseMaskStr = getNormalizedParamValue(params, LOWER_CASE_MASK_PARAM_NAME);
-
-    // FIXME Should have the outFormat be "pairwise". This will
-    // require fixes to the multi-blast service. (The multi-blast service
-    // currently doesn't allow "maxTargetSeqs" to be passed when the default
-    // report format is "pairwise".)
-    var outFormat = new JSONObject().put("format", "single-file-json");
-
-    var baseConfig =
-      new JSONObject()
-        .put("query", query)
-        .put("eValue", eValue)
-        .put("maxTargetSeqs", paramValueToInt(numQueryResultsStr))
-        .put("wordSize", paramValueToInt(wordSizeStr))
-        .put("softMasking", paramValueToBoolean(softMaskStr))
-        .put("lcaseMasking", paramValueToBoolean(lowerCaseMaskStr))
-        .put("outFormat", outFormat);
-
-    var maxMatches = paramValueToInt(maxMatchesStr);
-
-    if (maxMatches >= 1) {
-      baseConfig.put("maxHSPs", paramValueToInt(maxMatchesStr));
-    }
-
-    return baseConfig;
-  }
-
-  private static String getNormalizedParamValue(Map<String, String> params, String paramName) {
-    return params.get(paramName).replaceAll("^'|'$", "");
-  }
 
   private static boolean paramValueToBoolean(String paramValue) {
     return paramValue.equals("true");

@@ -7,6 +7,9 @@ import java.io.InputStream;
 import java.util.Map;
 import java.util.Optional;
 
+import javax.ws.rs.client.ClientBuilder;
+import javax.ws.rs.client.Entity;
+import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response.Status.Family;
 
 import org.apache.log4j.Logger;
@@ -14,6 +17,7 @@ import org.eupathdb.common.model.MultiBlastServiceUtil;
 import org.eupathdb.common.model.ProjectMapper;
 import org.eupathdb.common.service.PostValidationUserException;
 import org.eupathdb.websvccommon.wsfplugin.PluginUtilities;
+import org.glassfish.jersey.media.multipart.*;
 import org.gusdb.fgputil.FormatUtil;
 import org.gusdb.fgputil.json.JsonUtil;
 import org.gusdb.fgputil.MapBuilder;
@@ -96,7 +100,7 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
   @Override
   protected int execute(PluginRequest request, PluginResponse response)
       throws PluginModelException, PluginUserException, DelayedResultException {
-  
+
     // get the WDK model
     WdkModel wdkModel = PluginUtilities.getWdkModel(request);
 
@@ -114,25 +118,19 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
 
     // find base URL for multi-blast service
     String multiBlastServiceUrl = MultiBlastServiceUtil.getMultiBlastServiceUrl(
-        PluginUtilities.getWdkModel(request), e -> new PluginModelException(e));
+        PluginUtilities.getWdkModel(request), PluginModelException::new);
 
     // retrieve project ID
     String projectId = wdkModel.getProjectId();
 
     // use passed params to POST new job request to blast service
-    JSONObject newJobRequestJson = new JSONObject()
-      .put("site", projectId)
-      .put("maxResultSize", 0)
-      .put("maxSequences", 1)
-      .put("isPrimary", false)
-      .put("config", MultiBlastServiceParams.buildNewJobRequestConfigJson(request.getParams()))
-      .put("targets", MultiBlastServiceParams.buildNewJobRequestTargetJson(request.getParams()));
+    JSONObject newJobRequestJson = MultiBlastServiceParams.buildBlastCreateJobBody(projectId, request.getParams());
 
     String jobId = createJob(newJobRequestJson, multiBlastServiceUrl, authHeader);
 
     // start timer on wait time
     Timer t = new Timer();
-    
+
     // wait a short interval for blast service to look job up in cache and assign complete status
     ThreadUtil.sleep(INITIAL_WAIT_TIME_MILLIS);
 
@@ -155,8 +153,10 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
 
     // create a new "pairwise" report for this job
     JSONObject newReportRequestJson = new JSONObject()
-      .put("jobID", jobId)
-      .put("format", "pairwise");
+      .put("queryJobID", jobId)
+      .put("blastConfig", new JSONObject()
+        .put("formatType", "pairwise"))
+      .put("addToUserCollection", false);
 
     String reportId = createReport(newReportRequestJson, multiBlastServiceUrl, authHeader);
 
@@ -209,9 +209,9 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
     LOG.info("Requesting multi-blast report results at " + downloadReportUrl);
 
     TwoTuple<String,String> contentMaxLengthHeader =
-      new TwoTuple<String, String>("Content-Max-Length", String.valueOf(MAX_REPORT_SIZE_BYTES));
+      new TwoTuple<>("Content-Max-Length", String.valueOf(MAX_REPORT_SIZE_BYTES));
 
-    Map<String,String> headers = new MapBuilder<String,String>(authHeader)
+    Map<String,String> headers = new MapBuilder<>(authHeader)
       .put(contentMaxLengthHeader)
       .toMap();
 
@@ -256,8 +256,8 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
    * Makes a request to the multi-blast service to check the status of the job
    * with the passed ID.  Returns whether job is complete or still running. If
    * job status is "errored", throws a PluginModelException with the description.
-   *
-   * NOTE: If the job if found to be "expired", it will be rerun
+   * <p>
+   * NOTE: If the job is found to be "expired", it will be rerun
    *
    * @param multiBlastServiceUrl blast service base URL
    * @param jobId job whose status to fetch
@@ -270,15 +270,15 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
 
     // make job status request
     try (CloseableResponse jobStatusResponse = ClientUtil.makeRequest(
-        jobIdEndpointUrl, HttpMethod.GET, Optional.empty(), new MapBuilder<String,String>(authHeader).toMap())) {
-  
+        jobIdEndpointUrl, HttpMethod.GET, Optional.empty(), new MapBuilder<>(authHeader).toMap())) {
+
       String responseBody = ClientUtil.readSmallResponseBody(jobStatusResponse);
       if (jobStatusResponse.getStatus() != 200) {
         throw new PluginModelException("Unexpected response from multi-blast " +
             "service while checking job status (jobId=" + jobId + "): " +
             jobStatusResponse.getStatus() + FormatUtil.NL + responseBody);
       }
-  
+
       // parse response and analyze
       JSONObject responseObj = new JSONObject(responseBody);
       switch(responseObj.getString("status")) {
@@ -307,8 +307,8 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
    * Makes a request to the multi-blast service to check the status of the report
    * with the passed ID.  Returns whether report is complete or still running. If
    * report status is "errored", throws a PluginModelException with the description.
-   *
-   * NOTE: If the report if found to be "expired", it will be rerun
+   * <p>
+   * NOTE: If the report is found to be "expired", it will be rerun
    *
    * @param multiBlastServiceUrl blast service base URL
    * @param reportId report whose status to fetch
@@ -321,7 +321,7 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
 
     // make job status request
     try (CloseableResponse reportStatusResponse = ClientUtil.makeRequest(
-        reportIdEndpointUrl, HttpMethod.GET, Optional.empty(), new MapBuilder<String,String>(authHeader).toMap())) {
+        reportIdEndpointUrl, HttpMethod.GET, Optional.empty(), new MapBuilder<>(authHeader).toMap())) {
 
       String responseBody = ClientUtil.readSmallResponseBody(reportStatusResponse);
       if (reportStatusResponse.getStatus() != 200) {
@@ -354,33 +354,53 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
     }
   }
 
-  private static String createJob(JSONObject newJobRequestBody, String multiBlastServiceUrl, TwoTuple<String,String> authHeader) throws PluginModelException {
-    String jobsEndpointUrl = multiBlastServiceUrl + "/jobs";
-    LOG.info("Requesting new multi-blast job at " + jobsEndpointUrl + " with JSON body: " + newJobRequestBody.toString(2));
+  private static String createJob(
+    JSONObject newJobRequestBody,
+    String multiBlastServiceUrl,
+    TwoTuple<String,String> authHeader
+  ) throws PluginModelException {
+    String jobsEndpointUrl = multiBlastServiceUrl + "/query/jobs";
 
-    // make new job request
-    try (CloseableResponse newJobResponse = ClientUtil.makeRequest(
-        jobsEndpointUrl, HttpMethod.POST, Optional.of(newJobRequestBody), new MapBuilder<String,String>(authHeader).toMap())) {
+    var client = ClientBuilder.newBuilder()
+      .register(MultiPartFeature.class)
+      .build();
 
-      String responseBody = ClientUtil.readSmallResponseBody(newJobResponse);
+    try (var reqBody = new FormDataMultiPart()) {
+      reqBody.bodyPart(new FormDataBodyPart(
+        "config",
+        newJobRequestBody.toString(),
+        MediaType.APPLICATION_JSON_TYPE
+      ));
 
-      if (newJobResponse.getStatus() == 200) {
-        // success!  return job ID
-        return new JSONObject(responseBody).getString("jobId");
+      var res = client.target(jobsEndpointUrl)
+        .request(MediaType.MULTIPART_FORM_DATA_TYPE)
+        .header(authHeader.getKey(), authHeader.getValue())
+        .post(Entity.entity(reqBody, reqBody.getMediaType()));
+
+      try {
+        var resBody = ClientUtil.readSmallResponseBody(res);
+
+        if (res.getStatus() != 200) {
+          // success!  return job ID
+          return new JSONObject(resBody).getString("queryJobID");
+        }
+
+        if (Family.CLIENT_ERROR == res.getStatusInfo().getFamily()) {
+          // error implying bad parameters
+          throw new BlastServiceBadRequestException(
+            "Multi-Blast service job request returned " + res.getStatus() + NL + resBody);
+        }
+
+        throw new PluginModelException("Unexpected response from multi-blast " +
+          "service while requesting new job: " + res.getStatus() + NL + resBody);
+      } finally {
+        res.close();
       }
 
-      if (Family.CLIENT_ERROR.equals(newJobResponse.getStatusInfo().getFamily())) {
-        // error implying bad parameters
-        throw new BlastServiceBadRequestException(
-            "Multi-Blast service job request returned " + newJobResponse.getStatus() + NL + responseBody);
-      }
-
-      // other error
-      throw new PluginModelException("Unexpected response from multi-blast " +
-          "service while requesting new job: " + newJobResponse.getStatus() + NL + responseBody);
-    }
-    catch (IOException e) {
+    } catch (IOException e) {
       throw new PluginModelException("Unable to read response body from service response.", e);
+    } finally {
+      client.close();
     }
   }
 
@@ -390,7 +410,7 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
 
     // make new report request
     try (CloseableResponse newReportResponse = ClientUtil.makeRequest(
-        reportsEndpointUrl, HttpMethod.POST, Optional.of(newReportRequestBody), new MapBuilder<String,String>(authHeader).toMap())) {
+        reportsEndpointUrl, HttpMethod.POST, Optional.of(newReportRequestBody), new MapBuilder<>(authHeader).toMap())) {
 
       String responseBody = ClientUtil.readSmallResponseBody(newReportResponse);
 
@@ -413,7 +433,7 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
 
     // make rerun job request
     try (CloseableResponse rerunJobResponse = ClientUtil.makeRequest(
-        jobsIdEndpointUrl, HttpMethod.POST, Optional.of(new JSONObject()), new MapBuilder<String,String>(authHeader).toMap())) {
+        jobsIdEndpointUrl, HttpMethod.POST, Optional.of(new JSONObject()), new MapBuilder<>(authHeader).toMap())) {
 
       String responseBody = ClientUtil.readSmallResponseBody(rerunJobResponse);
 
@@ -433,7 +453,7 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
 
     // make rerun report request
     try (CloseableResponse rerunReportResponse = ClientUtil.makeRequest(
-        reportsIdEndpointUrl, HttpMethod.POST, Optional.of(new JSONObject()), new MapBuilder<String,String>(authHeader).toMap())) {
+        reportsIdEndpointUrl, HttpMethod.POST, Optional.of(new JSONObject()), new MapBuilder<>(authHeader).toMap())) {
 
       String responseBody = ClientUtil.readSmallResponseBody(rerunReportResponse);
 
