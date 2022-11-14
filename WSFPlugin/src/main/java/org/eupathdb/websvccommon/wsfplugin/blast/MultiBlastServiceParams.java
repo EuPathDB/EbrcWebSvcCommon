@@ -22,7 +22,8 @@ import org.json.JSONObject;
  * multi-blast UI and so users get the same result when they export to WDK.
  *
  * @author rdoherty
- * @author eharper
+ * @author epharper
+ * @author jtlong
  */
 public class MultiBlastServiceParams {
 
