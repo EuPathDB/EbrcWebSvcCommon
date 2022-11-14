@@ -373,7 +373,7 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
       ));
 
       var res = client.target(jobsEndpointUrl)
-        .request(MediaType.MULTIPART_FORM_DATA_TYPE)
+        .request()
         .header(authHeader.getKey(), authHeader.getValue())
         .post(Entity.entity(reqBody, reqBody.getMediaType()));
 
