@@ -126,7 +126,7 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
     // use passed params to POST new job request to blast service
     JSONObject newJobRequestJson = MultiBlastServiceParams.buildBlastCreateJobBody(projectId, request.getParams());
 
-    String jobId = createJob(newJobRequestJson, multiBlastServiceUrl, authHeader);
+    String jobId = createQueryJob(newJobRequestJson, multiBlastServiceUrl, authHeader);
 
     // start timer on wait time
     Timer t = new Timer();
@@ -354,7 +354,7 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
     }
   }
 
-  private static String createJob(
+  private static String createQueryJob(
     JSONObject newJobRequestBody,
     String multiBlastServiceUrl,
     TwoTuple<String,String> authHeader
@@ -380,7 +380,7 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
       try {
         var resBody = ClientUtil.readSmallResponseBody(res);
 
-        if (res.getStatus() != 200) {
+        if (res.getStatus() == 200) {
           // success!  return job ID
           return new JSONObject(resBody).getString("queryJobID");
         }
