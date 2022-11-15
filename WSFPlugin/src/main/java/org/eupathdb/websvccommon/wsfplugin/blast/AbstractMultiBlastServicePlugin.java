@@ -372,14 +372,12 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
         MediaType.APPLICATION_JSON_TYPE
       ));
 
-      LOG.info("Header " + authHeader.getKey() + " = " + authHeader.getValue());
-
-      var res = client.target(jobsEndpointUrl)
-        .request()
-        .header(authHeader.getKey(), authHeader.getValue())
-        .post(Entity.entity(reqBody, reqBody.getMediaType()));
-
-      try {
+      try (
+        var res = client.target(jobsEndpointUrl)
+          .request()
+          .header(authHeader.getKey(), authHeader.getValue())
+          .post(Entity.entity(reqBody, reqBody.getMediaType()))
+      ) {
         var resBody = ClientUtil.readSmallResponseBody(res);
 
         if (res.getStatus() == 200) {
@@ -395,8 +393,6 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
 
         throw new PluginModelException("Unexpected response from multi-blast " +
           "service while requesting new job: " + res.getStatus() + NL + resBody);
-      } finally {
-        res.close();
       }
 
     } catch (IOException e) {
