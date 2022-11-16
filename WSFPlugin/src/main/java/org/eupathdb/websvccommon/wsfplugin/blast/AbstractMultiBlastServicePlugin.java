@@ -441,7 +441,7 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
 
       if (newReportResponse.getStatus() == 200) {
         // success!  return report ID
-        return new JSONObject(responseBody).getString("reportID");
+        return new JSONObject(responseBody).getString("reportJobID");
       }
 
       throw new PluginModelException("Unexpected response from multi-blast " +
