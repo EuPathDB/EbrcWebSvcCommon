@@ -1,7 +1,5 @@
 package org.eupathdb.websvccommon.wsfplugin.blast;
 
-import static org.gusdb.fgputil.FormatUtil.urlEncodeUtf8;
-
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -117,8 +115,8 @@ public abstract class AbstractResultFormatter implements ResultFormatter {
       String recordClassUrlSegment = wdkModel.getRecordClassByFullName(recordClassFullName).get().getUrlSegment();
       return getWebappBaseUrl(wdkModel) +
           "/record" +
-          "/" + urlEncodeUtf8(recordClassUrlSegment) +
-          "/" + urlEncodeUtf8(sourceId);
+          "/" + recordClassUrlSegment +
+          "/" + sourceId;
     }
   }
 
