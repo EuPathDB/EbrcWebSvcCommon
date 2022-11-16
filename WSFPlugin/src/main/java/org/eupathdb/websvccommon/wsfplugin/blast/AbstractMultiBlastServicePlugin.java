@@ -265,7 +265,7 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
    * @throws PluginModelException if job has errored
    */
   private static boolean isJobComplete(String multiBlastServiceUrl, String jobId, TwoTuple<String,String> authHeader) throws PluginModelException {
-    String jobIdEndpointUrl = multiBlastServiceUrl + "/jobs/" + jobId;
+    String jobIdEndpointUrl = multiBlastServiceUrl + "/jobs/" + jobId + "?save_job=false";
     LOG.info("Requesting multi-blast job status at " + jobIdEndpointUrl);
 
     // make job status request
@@ -288,9 +288,9 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
         case "expired":
           rerunJob(multiBlastServiceUrl, jobId, authHeader);
           return false;
-        case "completed":
+        case "complete":
           return true;
-        case "errored":
+        case "failed":
           throw new PluginModelException(
             "Multi-blast service job failed: " + responseObj.getString("description"));
         default:
