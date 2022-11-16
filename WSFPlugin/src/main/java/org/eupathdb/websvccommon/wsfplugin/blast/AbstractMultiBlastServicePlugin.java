@@ -42,6 +42,32 @@ import org.json.JSONObject;
 
 public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
 
+  private static class MBPaths {
+    static String queryJobList(String base, String site) {
+      return (site != null && !site.isBlank())
+        ? base + "/query/jobs?site=" + site
+        : base + "/query/jobs";
+    }
+
+    static String queryJobByID(String base, String jobID, boolean save) {
+      return base + "/query/jobs/" + jobID + "?save_job=" + save;
+    }
+
+    static String reportJobList(String base, String queryJobID) {
+      return (queryJobID != null && !queryJobID.isBlank())
+        ? base + "/report/jobs?query_job_id=" + queryJobID
+        : base + "/report/jobs";
+    }
+
+    static String reportJobByID(String base, String jobID, boolean save) {
+      return base + "/report/jobs/" + jobID + "?save_job=" + save;
+    }
+
+    static String reportJobFileDownload(String base, String jobID, String file, boolean download) {
+      return base + "/report/jobs/" + jobID + "/files/" + file + "?download=" + download;
+    }
+  }
+
   private static final Logger LOG = Logger.getLogger(AbstractMultiBlastServicePlugin.class);
 
   private static final int INITIAL_WAIT_TIME_MILLIS = 2 /* seconds */ * 1000;
@@ -204,7 +230,7 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
       String dbType, String[] orderedColumns) throws PluginModelException, PluginUserException {
 
     // define request data
-    String downloadReportUrl = multiBlastServiceUrl + "/reports/" + reportId + "/files/report.txt?download=false";
+    String downloadReportUrl = MBPaths.reportJobFileDownload(multiBlastServiceUrl, reportId, "report.txt", false);
 
     LOG.info("Requesting multi-blast report results at " + downloadReportUrl);
 
@@ -265,7 +291,8 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
    * @throws PluginModelException if job has errored
    */
   private static boolean isJobComplete(String multiBlastServiceUrl, String jobId, TwoTuple<String,String> authHeader) throws PluginModelException {
-    String jobIdEndpointUrl = multiBlastServiceUrl + "/jobs/" + jobId + "?save_job=false";
+    String jobIdEndpointUrl = MBPaths.queryJobByID(multiBlastServiceUrl, jobId, false);
+
     LOG.info("Requesting multi-blast job status at " + jobIdEndpointUrl);
 
     // make job status request
@@ -316,7 +343,7 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
    * @throws PluginModelException if report has errored
    */
   private static boolean isReportComplete(String multiBlastServiceUrl, String reportId, TwoTuple<String,String> authHeader) throws PluginModelException {
-    String reportIdEndpointUrl = multiBlastServiceUrl + "/reports/" + reportId;
+    String reportIdEndpointUrl = MBPaths.reportJobByID(multiBlastServiceUrl, reportId, false);
     LOG.info("Requesting multi-blast report status at " + reportIdEndpointUrl);
 
     // make job status request
@@ -359,7 +386,7 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
     String multiBlastServiceUrl,
     TwoTuple<String,String> authHeader
   ) throws PluginModelException {
-    String jobsEndpointUrl = multiBlastServiceUrl + "/query/jobs";
+    String jobsEndpointUrl = MBPaths.queryJobList(multiBlastServiceUrl, null);
 
     var client = ClientBuilder.newBuilder()
       .register(MultiPartFeature.class)
@@ -403,7 +430,7 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
   }
 
   private static String createReport(JSONObject newReportRequestBody, String multiBlastServiceUrl, TwoTuple<String,String> authHeader) throws PluginModelException {
-    String reportsEndpointUrl = multiBlastServiceUrl + "/reports";
+    String reportsEndpointUrl = MBPaths.reportJobList(multiBlastServiceUrl, null);
     LOG.info("Requesting new multi-blast report at " + reportsEndpointUrl + " with JSON body: " + newReportRequestBody.toString(2));
 
     // make new report request
@@ -426,7 +453,7 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
   }
 
   private static void rerunJob(String multiBlastServiceUrl, String jobId, TwoTuple<String,String> authHeader) throws PluginModelException {
-    String jobsIdEndpointUrl = multiBlastServiceUrl + "/jobs/" + jobId;
+    String jobsIdEndpointUrl = MBPaths.queryJobByID(multiBlastServiceUrl, jobId, false);
     LOG.info("Rerunning expired multi-blast job at " + jobsIdEndpointUrl + " with job id " + jobId);
 
     // make rerun job request
@@ -446,7 +473,7 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
   }
 
   private static void rerunReport(String multiBlastServiceUrl, String reportId, TwoTuple<String,String> authHeader) throws PluginModelException {
-    String reportsIdEndpointUrl = multiBlastServiceUrl + "/reports/" + reportId;
+    String reportsIdEndpointUrl = MBPaths.reportJobByID(multiBlastServiceUrl, reportId, false);
     LOG.info("Rerunning expired multi-blast report at " + reportsIdEndpointUrl + " with report id " + reportId);
 
     // make rerun report request
