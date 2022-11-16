@@ -95,8 +95,8 @@ public class MultiBlastServiceParams {
       .put("eValue", getNormalizedParamValue(params, EXPECTATION_VALUE_PARAM_NAME))
       .put("softMasking", getBooleanParamValue(params, SOFT_MASK_PARAM_NAME))
       .put("lowercaseMasking", getBooleanParamValue(params, LOWER_CASE_MASK_PARAM_NAME))
-      .put("maxTargetSequences", getIntParamValue(params, NUM_QUERY_RESULTS_PARAM_NAME))
-      .put("maxHSPs", getIntParamValue(params, MAX_MATCHES_QUERY_RANGE_PARAM_NAME));
+      .put("maxTargetSequences", zeroToNull(getIntParamValue(params, NUM_QUERY_RESULTS_PARAM_NAME)))
+      .put("maxHSPs", zeroToNull(getIntParamValue(params, MAX_MATCHES_QUERY_RANGE_PARAM_NAME)));
 
     switch (tool) {
       case "blastn":
@@ -229,6 +229,10 @@ public class MultiBlastServiceParams {
   //   Helper Methods
   //
   // // //
+
+  private static Integer zeroToNull(int value) {
+    return value == 0 ? null : value;
+  }
 
   private static String getNormalizedParamValue(Map<String, String> params, String paramName) {
     return params.get(paramName).replaceAll("^'|'$", "");
