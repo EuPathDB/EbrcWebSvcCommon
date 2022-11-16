@@ -366,9 +366,9 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
         case "expired":
           rerunReport(multiBlastServiceUrl, reportId, authHeader);
           return false;
-        case "completed":
+        case "complete":
           return true;
-        case "errored":
+        case "failed":
           throw new PluginModelException(
             "Multi-blast service report failed: " + responseObj.getString("description"));
         default:
