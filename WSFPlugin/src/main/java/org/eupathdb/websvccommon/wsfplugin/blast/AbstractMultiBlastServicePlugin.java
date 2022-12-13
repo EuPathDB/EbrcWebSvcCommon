@@ -96,7 +96,7 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
   @Override
   protected int execute(PluginRequest request, PluginResponse response)
       throws PluginModelException, PluginUserException, DelayedResultException {
-  
+
     // get the WDK model
     WdkModel wdkModel = PluginUtilities.getWdkModel(request);
 
@@ -132,7 +132,7 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
 
     // start timer on wait time
     Timer t = new Timer();
-    
+
     // wait a short interval for blast service to look job up in cache and assign complete status
     ThreadUtil.sleep(INITIAL_WAIT_TIME_MILLIS);
 
@@ -271,14 +271,14 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
     // make job status request
     try (CloseableResponse jobStatusResponse = ClientUtil.makeRequest(
         jobIdEndpointUrl, HttpMethod.GET, Optional.empty(), new MapBuilder<String,String>(authHeader).toMap())) {
-  
+
       String responseBody = ClientUtil.readSmallResponseBody(jobStatusResponse);
       if (jobStatusResponse.getStatus() != 200) {
         throw new PluginModelException("Unexpected response from multi-blast " +
             "service while checking job status (jobId=" + jobId + "): " +
             jobStatusResponse.getStatus() + FormatUtil.NL + responseBody);
       }
-  
+
       // parse response and analyze
       JSONObject responseObj = new JSONObject(responseBody);
       switch(responseObj.getString("status")) {
@@ -342,8 +342,7 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
         case "completed":
           return true;
         case "errored":
-          throw new PluginModelException(
-            "Multi-blast service report failed: " + responseObj.getString("description"));
+          throw new PluginModelException("Multi-blast service report failed.");
         default:
           throw new PluginModelException(
             "Multi-blast service report status endpoint returned unrecognized status value: " + responseObj.getString("status"));
