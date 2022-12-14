@@ -342,7 +342,8 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
         case "completed":
           return true;
         case "errored":
-          throw new PluginModelException("Multi-blast service report failed.");
+          throw new PluginModelException("Multi-blast service report failed. This is usually a temporary network problem, please try later. " +
+                                         "In the meantime if you see a Download dropdown menu, you might be able to get the result.");
         default:
           throw new PluginModelException(
             "Multi-blast service report status endpoint returned unrecognized status value: " + responseObj.getString("status"));
