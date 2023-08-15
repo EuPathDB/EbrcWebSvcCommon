@@ -2,6 +2,7 @@ package org.eupathdb.websvccommon.wsfplugin.solrsearch;
 
 import static org.eupathdb.websvccommon.wsfplugin.solrsearch.SiteSearchUtil.getSearchFields;
 import static org.eupathdb.websvccommon.wsfplugin.solrsearch.SiteSearchUtil.getSiteSearchServiceUrl;
+import static org.gusdb.fgputil.functional.Functions.with;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -49,6 +50,9 @@ public class EuPathSiteSearchPlugin extends AbstractPlugin {
   protected static final String SEARCH_DOC_TYPE = "document_type";
   protected static final String SEARCH_FIELDS_PARAM_NAME = "text_fields";
 
+  // Site-Search endpoint for ND-JSON streaming results.
+  protected static final String STREAM_SEARCH_ENDPOINT = "stream";
+
   @Override
   public String[] getRequiredParameterNames() {
     return new String[]{ SEARCH_TEXT_PARAM_NAME, SEARCH_FIELDS_PARAM_NAME };
@@ -91,7 +95,10 @@ public class EuPathSiteSearchPlugin extends AbstractPlugin {
     Response searchResponse = null;
     try {
       // build request elements
-      String searchUrl = getSiteSearchServiceUrl(request);
+      String searchUrl = with(
+        getSiteSearchServiceUrl(request),
+        url -> url + (url.endsWith("/") ? STREAM_SEARCH_ENDPOINT : "/" + STREAM_SEARCH_ENDPOINT)
+      );
       JSONObject requestBody = buildRequestJson(request);
       LOG.info("Querying site search service at " + searchUrl + " with JSON body: " + requestBody.toString(2));
 
