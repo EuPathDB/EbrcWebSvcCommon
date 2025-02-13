@@ -15,21 +15,21 @@ import org.eupathdb.common.model.ProjectMapper;
 import org.eupathdb.common.service.PostValidationUserException;
 import org.eupathdb.websvccommon.wsfplugin.PluginUtilities;
 import org.gusdb.fgputil.FormatUtil;
-import org.gusdb.fgputil.json.JsonUtil;
 import org.gusdb.fgputil.MapBuilder;
 import org.gusdb.fgputil.Timer;
 import org.gusdb.fgputil.Tuples.TwoTuple;
 import org.gusdb.fgputil.client.ClientUtil;
 import org.gusdb.fgputil.client.CloseableResponse;
+import org.gusdb.fgputil.json.JsonUtil;
 import org.gusdb.fgputil.runtime.ThreadUtil;
 import org.gusdb.fgputil.web.HttpMethod;
 import org.gusdb.wdk.model.Utilities;
 import org.gusdb.wdk.model.WdkModel;
 import org.gusdb.wdk.model.WdkModelException;
 import org.gusdb.wdk.model.record.RecordClass;
-import org.gusdb.wdk.model.user.User;
 import org.gusdb.wsf.plugin.AbstractPlugin;
 import org.gusdb.wsf.plugin.DelayedResultException;
+import org.gusdb.wsf.plugin.Plugin;
 import org.gusdb.wsf.plugin.PluginModelException;
 import org.gusdb.wsf.plugin.PluginRequest;
 import org.gusdb.wsf.plugin.PluginResponse;
@@ -110,7 +110,8 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
     }
 
     // get the required authentication header for this user
-    TwoTuple<String,String> authHeader = getAuthHeader(wdkModel, request.getContext());
+    TwoTuple<String,String> authHeader = Plugin.getServiceAuthorizationHeader(
+        request.getContext().get(Utilities.CONTEXT_KEY_VALIDATED_TOKEN_OBJECT));
 
     // find base URL for multi-blast service
     String multiBlastServiceUrl = MultiBlastServiceUtil.getMultiBlastServiceUrl(
@@ -186,17 +187,6 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
     writeResults(multiBlastServiceUrl, reportId, authHeader, response, wdkModel, recordClass, dbType, orderedColumns);
 
     return 0;
-  }
-
-  private TwoTuple<String, String> getAuthHeader(WdkModel wdkModel, Map<String, String> requestContext) {
-    try {
-      User user = wdkModel.getUserFactory().getUserById(
-          Long.parseLong(requestContext.get(Utilities.QUERY_CTX_USER))).orElseThrow();
-      return MultiBlastServiceUtil.getAuthHeader(wdkModel, user);
-    }
-    catch(WdkModelException e) {
-      throw new RuntimeException(e);
-    }
   }
 
   private void writeResults(String multiBlastServiceUrl, String reportId, TwoTuple<String,String> authHeader,

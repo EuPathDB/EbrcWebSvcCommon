@@ -12,7 +12,7 @@ import org.gusdb.wsf.plugin.PluginRequest;
 public class PluginUtilities {
 
   public static Question getContextQuestion(PluginRequest request) throws PluginModelException {
-    String questionFullName = request.getContext().get(Utilities.QUERY_CTX_QUESTION);
+    String questionFullName = request.getContext().get(Utilities.CONTEXT_KEY_QUESTION_FULL_NAME);
     return getWdkModel(request.getProjectId()).getQuestionByFullName(questionFullName)
       .orElseThrow(() -> new PluginModelException("Could not find context question: " + questionFullName));
   }
