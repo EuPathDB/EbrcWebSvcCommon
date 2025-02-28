@@ -111,7 +111,7 @@ public abstract class AbstractMultiBlastServicePlugin extends AbstractPlugin {
 
     // get the required authentication header for this user
     TwoTuple<String,String> authHeader = Plugin.getServiceAuthorizationHeader(
-        request.getContext().get(Utilities.CONTEXT_KEY_VALIDATED_TOKEN_OBJECT));
+        request.getContext().get(Utilities.CONTEXT_KEY_BEARER_TOKEN_STRING));
 
     // find base URL for multi-blast service
     String multiBlastServiceUrl = MultiBlastServiceUtil.getMultiBlastServiceUrl(
